@@ -1,44 +1,43 @@
 const fs = require('fs')
-const path = require('path')
+const FILE_NAME = 'test.png'
 
 const axios = require('axios')
-const express = require('express')
-const multer = require('multer')
+const Hapi = require('hapi')
 
-const app = express()
-const upload = multer({ dest: path.resolve(__dirname, 'upload') })
+const server = new Hapi.Server()
 
-app.post('/', upload.single('README.md'), function (req, res) {
-  const {
-    originalname,
-    path: uploadPath
-  } = req.file
-
-  console.log(`${originalname} uploaded to ${uploadPath}`)
-  res.status(201).json({
-    ok: true
-  })
+server.connection({
+  port: 3001
 })
 
-const listener = app.listen(process.env.PORT || 3000, function () {
-  console.log('App is listening on port ' + listener.address().port)
-  console.log('stop with ctrl + C\n')
+server.route({
+  method: 'POST',
+  path: '/',
+  config: {
+    payload: {
+      output: 'stream'
+    }
+  },
+  handler: function (request, reply) {
+    request.payload.pipe(fs.createWriteStream(`upload/${Date.now()}-${FILE_NAME}`))
 
-  const readmeStream = fs.createReadStream('README.md')
+    reply({ ok: true })
+    server.stop()
+  }
+})
+
+server.start(() => {
+  console.log('Server running at:', server.info.uri)
+
+  const readmeStream = fs.createReadStream(FILE_NAME)
   readmeStream.on('error', console.log)
-
-  // // reference implementation with Mikeal's request
-  // const request = require('request')
-  // const form = request.post(`http://localhost:${listener.address().port}`).form()
-  // form.append('README.md', readmeStream)
-  // return
 
   axios({
     method: 'post',
-    url: `https://localhost:${listener.address().port}`,
+    url: 'http://localhost:3001',
+    data: readmeStream,
     headers: {
-      'Content-Type': 'text/markdown; charset=UTF-8'
-    },
-    data: fs.createReadStream('README.md')
-  }).then(console.log, console.log)
+      'Content-Type': 'text/markdown'
+    }
+  }).catch(console.log)
 })
